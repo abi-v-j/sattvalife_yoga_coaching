@@ -1,4 +1,11 @@
-Here’s a clean and ready-to-use `README.md` for your Django project based on the structure shown:
+---
+title: Sattvalife Yoga
+emoji: 🧘
+colorFrom: green
+colorTo: blue
+sdk: docker
+app_port: 7860
+pinned: false
 
 ---
 

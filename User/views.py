@@ -787,3 +787,7 @@ def predict_yoga_pose(request):
     except Exception as e:
         print("predict_yoga_pose error:", str(e))
         return api_error(str(e), status=500)
+
+
+
+        

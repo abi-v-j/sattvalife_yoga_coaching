@@ -1,0 +1,31 @@
+# Python junk
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Django specific
+db.sqlite3
+db.sqlite3-journal
+staticfiles/
+media/
+.vercel/
+
+# Environment and Secrets
+.env
+.venv
+.env.local
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# ML/OS specific
+.ipynb_checkpoints
+.DS_Store 
