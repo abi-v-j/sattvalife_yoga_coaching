@@ -1,0 +1,8 @@
+Django==5.2.12
+joblib==1.5.3
+mediapipe==0.10.10
+numpy==2.2.6
+opencv-python==4.13.0.92
+pandas==2.3.3
+protobuf==3.20.3
+scikit-learn==1.7.2
