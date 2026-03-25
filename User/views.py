@@ -13,10 +13,10 @@ from django.views.decorators.csrf import csrf_exempt
 
 
 # =========================================================
-# GLOBAL SMOOTHING STATE
+# GLOBAL STATE
 # =========================================================
 PRED_HISTORY = deque(maxlen=5)
-SCORE_HISTORY = deque(maxlen=3)
+SCORE_HISTORY = deque(maxlen=4)
 FEEDBACK_HISTORY = deque(maxlen=4)
 
 LEFT_KNEE_HISTORY = deque(maxlen=4)
@@ -25,26 +25,6 @@ LEFT_ELBOW_HISTORY = deque(maxlen=4)
 RIGHT_ELBOW_HISTORY = deque(maxlen=4)
 
 PERFECT_HOLD_COUNT = 0
-
-
-def smooth_label(new_label):
-    PRED_HISTORY.append(new_label)
-    return Counter(PRED_HISTORY).most_common(1)[0][0]
-
-
-def smooth_score(new_score):
-    SCORE_HISTORY.append(float(new_score))
-    return int(round(sum(SCORE_HISTORY) / len(SCORE_HISTORY)))
-
-
-def smooth_feedback(new_feedback):
-    FEEDBACK_HISTORY.append(new_feedback)
-    return Counter(FEEDBACK_HISTORY).most_common(1)[0][0]
-
-
-def smooth_value(history, value):
-    history.append(float(value))
-    return float(sum(history) / len(history))
 
 
 # =========================================================
@@ -62,6 +42,10 @@ scaler = joblib.load(SCALER_PATH)
 label_encoder = joblib.load(LABEL_PATH)
 feature_names = joblib.load(FEATURE_NAMES_PATH)
 
+
+# =========================================================
+# MEDIAPIPE SETUP
+# =========================================================
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(
     static_image_mode=False,
@@ -71,7 +55,7 @@ pose = mp_pose.Pose(
     min_tracking_confidence=0.35,
 )
 
-CONFIDENCE_THRESHOLD = 0.40
+CONFIDENCE_THRESHOLD = 0.35
 
 
 # =========================================================
@@ -136,11 +120,10 @@ GREEN = "#00ff66"
 RED = "#ff3b30"
 YELLOW = "#ffd60a"
 GRAY = "#cfcfcf"
-WHITE = "#ffffff"
 
 
 # =========================================================
-# BASIC VIEWS
+# BASIC PAGES
 # =========================================================
 def camera_page(request):
     return render(request, "User/camera.html")
@@ -165,6 +148,29 @@ def api_error(message, status=400):
         "success": False,
         "error": str(message)
     }, status=status)
+
+
+# =========================================================
+# SMOOTHING HELPERS
+# =========================================================
+def smooth_label(new_label):
+    PRED_HISTORY.append(str(new_label))
+    return Counter(PRED_HISTORY).most_common(1)[0][0]
+
+
+def smooth_score(new_score):
+    SCORE_HISTORY.append(float(new_score))
+    return int(round(sum(SCORE_HISTORY) / len(SCORE_HISTORY)))
+
+
+def smooth_feedback(new_feedback):
+    FEEDBACK_HISTORY.append(str(new_feedback))
+    return Counter(FEEDBACK_HISTORY).most_common(1)[0][0]
+
+
+def smooth_value(history, value):
+    history.append(float(value))
+    return float(sum(history) / len(history))
 
 
 # =========================================================
@@ -242,15 +248,15 @@ def full_body_visible_soft(landmarks):
         }
 
         core_ok = (
-            req["nose"] > 0.25 and
-            req["left_shoulder"] > 0.25 and
-            req["right_shoulder"] > 0.25 and
-            req["left_hip"] > 0.22 and
-            req["right_hip"] > 0.22
+            req["nose"] > 0.22 and
+            req["left_shoulder"] > 0.22 and
+            req["right_shoulder"] > 0.22 and
+            req["left_hip"] > 0.20 and
+            req["right_hip"] > 0.20
         )
 
-        knee_ok = req["left_knee"] > 0.18 or req["right_knee"] > 0.18
-        ankle_ok = req["left_ankle"] > 0.12 or req["right_ankle"] > 0.12
+        knee_ok = req["left_knee"] > 0.16 or req["right_knee"] > 0.16
+        ankle_ok = req["left_ankle"] > 0.10 or req["right_ankle"] > 0.10
 
         return core_ok and knee_ok and ankle_ok
     except Exception:
@@ -280,8 +286,8 @@ def create_model_features(landmarks):
     shoulder_diff = abs(pts[LEFT_SHOULDER][1] - pts[RIGHT_SHOULDER][1])
     hip_diff = abs(pts[LEFT_HIP][1] - pts[RIGHT_HIP][1])
 
-    left_hand_above_head = float(pts[LEFT_WRIST][1] < pts[NOSE][1] + 0.05)
-    right_hand_above_head = float(pts[RIGHT_WRIST][1] < pts[NOSE][1] + 0.05)
+    left_hand_above_head = float(pts[LEFT_WRIST][1] < pts[NOSE][1] + 0.08)
+    right_hand_above_head = float(pts[RIGHT_WRIST][1] < pts[NOSE][1] + 0.08)
 
     features.extend([
         left_knee, right_knee,
@@ -364,28 +370,28 @@ def analyze_tree_pose(raw_pts):
         stand_knee = rk
         raised_knee = lk
 
-    hands_up = (lw[1] < nose[1] + 0.08) and (rw[1] < nose[1] + 0.08)
-    arms_straight = left_elbow >= 130 and right_elbow >= 130
-    shoulders_level = shoulder_diff < 0.15
-    hips_level = hip_diff < 0.15
-    torso_ok = torso_tilt < 22
+    hands_up = (lw[1] < nose[1] + 0.10) and (rw[1] < nose[1] + 0.10)
+    arms_straight = left_elbow >= 125 and right_elbow >= 125
+    shoulders_level = shoulder_diff < 0.18
+    hips_level = hip_diff < 0.18
+    torso_ok = torso_tilt < 24
 
     hand_gap = np.linalg.norm(lw[:2] - rw[:2])
-    hand_align_ok = hand_gap < 0.38
+    hand_align_ok = hand_gap < 0.42
 
     dist_knee = np.linalg.norm(raised_foot[:2] - stand_knee[:2])
     dist_hip = np.linalg.norm(raised_foot[:2] - stand_hip[:2])
-    foot_place_ok = (dist_knee < 0.40) or (dist_hip < 0.36)
+    foot_place_ok = (dist_knee < 0.45) or (dist_hip < 0.40)
 
     center_x = hip_center[0]
     if standing_side == "left":
-        knee_open_ok = raised_knee[0] > center_x - 0.02
+        knee_open_ok = raised_knee[0] > center_x - 0.04
     else:
-        knee_open_ok = raised_knee[0] < center_x + 0.02
+        knee_open_ok = raised_knee[0] < center_x + 0.04
 
     checks = {
-        "standing_leg": stand_angle >= 140,
-        "bent_leg": 20 <= bent_angle <= 135,
+        "standing_leg": stand_angle >= 135,
+        "bent_leg": 20 <= bent_angle <= 140,
         "foot_place": foot_place_ok,
         "knee_open": knee_open_ok,
         "hands_up": hands_up,
@@ -413,9 +419,11 @@ def analyze_tree_pose(raw_pts):
     for key, ok in checks.items():
         if ok:
             score += weights[key]
+
     score = min(100, score)
 
     priority_feedback = []
+
     if not checks["foot_place"]:
         priority_feedback.append("Place the raised foot higher on the inner leg")
     if not checks["knee_open"]:
@@ -427,7 +435,7 @@ def analyze_tree_pose(raw_pts):
     if not checks["arms_straight"]:
         priority_feedback.append("Straighten both arms")
     if not checks["hand_align"]:
-        priority_feedback.append("Align both hands")
+        priority_feedback.append("Bring both hands closer together")
     if not checks["torso"]:
         priority_feedback.append("Keep torso upright")
     if not checks["shoulders"]:
@@ -435,15 +443,15 @@ def analyze_tree_pose(raw_pts):
     if not checks["hips"]:
         priority_feedback.append("Level your hips")
 
-    if score >= 80:
+    if score >= 75:
         main_feedback = "Correct Tree pose"
         status = "perfect"
         pose_label = "Correct Tree"
-    elif score >= 65:
+    elif score >= 55:
         main_feedback = priority_feedback[0] if priority_feedback else "Good Tree pose"
         status = "good"
         pose_label = "Tree Pose"
-    elif score >= 45:
+    elif score >= 35:
         main_feedback = priority_feedback[0] if priority_feedback else "You are close. Make small corrections."
         status = "warning"
         pose_label = "Tree Needs Correction"
@@ -485,17 +493,17 @@ def is_tree_like(predicted_label, confidence, stand_angle, bent_angle, hands_up)
     if "tree" in label:
         return True
 
-    if confidence >= 0.45 and stand_angle > 138 and bent_angle < 140:
+    if confidence >= 0.35 and stand_angle > 132 and bent_angle < 145:
         return True
 
-    if stand_angle > 145 and bent_angle < 130 and hands_up:
+    if stand_angle > 138 and bent_angle < 140 and hands_up:
         return True
 
     return False
 
 
 # =========================================================
-# FRONTEND OVERLAY
+# FRONTEND OVERLAY HELPERS
 # =========================================================
 def build_points_for_frontend(raw_pts, analysis, image_width, image_height):
     checks = analysis["checks"]
@@ -671,17 +679,18 @@ def predict_yoga_pose(request):
         stable_predicted_label = smooth_label(predicted_label)
 
         raw_pts = np.array([[lm.x, lm.y, lm.z] for lm in landmarks], dtype=np.float32)
+
         analysis = analyze_tree_pose(raw_pts)
 
         if not body_visible:
             analysis["status"] = "warning"
-            analysis["main_feedback"] = "Body visibility is low. Move slightly back and keep full body centered."
+            analysis["main_feedback"] = "Move a little back. Full body should be visible."
             analysis["tips"] = [
-                "Show full body more clearly",
-                "Keep one standing foot fully visible",
+                "Show full body clearly",
+                "Keep head, hands, hips, knees and foot visible",
                 "Stay centered in the frame"
             ]
-            analysis["score"] = min(analysis["score"], 50)
+            analysis["score"] = min(analysis["score"], 60)
 
         stable_score = smooth_score(analysis["score"])
         stable_feedback = smooth_feedback(analysis["main_feedback"])
@@ -695,12 +704,12 @@ def predict_yoga_pose(request):
             analysis["hands_up"]
         )
 
-        if tree_like and stable_score >= 80:
+        if tree_like and stable_score >= 75:
             PERFECT_HOLD_COUNT += 1
         else:
             PERFECT_HOLD_COUNT = 0
 
-        if confidence < CONFIDENCE_THRESHOLD and stable_score < 45:
+        if confidence < CONFIDENCE_THRESHOLD and stable_score < 35:
             return api_success(
                 pose="Unknown",
                 model_pose=stable_predicted_label,
@@ -721,7 +730,7 @@ def predict_yoga_pose(request):
                 angle_texts=[]
             )
 
-        if not tree_like and stable_score < 35:
+        if not tree_like and stable_score < 25:
             return api_success(
                 pose="Not Tree Pose",
                 model_pose=stable_predicted_label,
@@ -745,15 +754,18 @@ def predict_yoga_pose(request):
         pose_name = analysis["pose_label"]
         coach_text = "Stand in Tree pose and improve alignment."
 
-        if stable_score >= 80:
+        if stable_score >= 75:
             pose_name = "Correct Tree"
             coach_text = "Good. Your Tree pose is correct."
-        elif stable_score >= 65:
+        elif stable_score >= 55:
             pose_name = "Tree Pose"
             coach_text = "Almost correct. Refine a small correction."
-        elif stable_score >= 45:
+        elif stable_score >= 35:
             pose_name = "Tree Needs Correction"
             coach_text = "You are close. Make small corrections."
+        else:
+            pose_name = "Not Ready Yet"
+            coach_text = "Move into Tree pose and hold steady."
 
         if PERFECT_HOLD_COUNT >= 2:
             pose_name = "Correct Tree"
